@@ -14,6 +14,9 @@ export default {
     }
 
     try {
+      // Auto-initialize D1 schema if not exists
+      await ensureTable(env.DB);
+
       // 1. Web UI Dashboard at /
       if (url.pathname === '/' || url.pathname === '/index.html') {
         return new Response(getDashboardHTML(), {
@@ -414,3 +417,24 @@ function getDashboardHTML() {
 </body>
 </html>`;
 }
+
+// Helper to auto-create submissions table if it doesn't exist
+async function ensureTable(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone_number TEXT,
+      gift_card_name TEXT,
+      gift_card_code TEXT,
+      payment_method TEXT,
+      payment_details TEXT,
+      total_amount TEXT,
+      raw_message TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_gift_card_code ON submissions(gift_card_code)
+  `).run();
+}
+
