@@ -170,7 +170,7 @@ Action JSON schemas:
         let responseText = '';
 
         while (maxIterations > 0) {
-          const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+          const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
             messages
           });
 
