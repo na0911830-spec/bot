@@ -83,45 +83,75 @@ export default {
           });
         }
 
-        // Fetch some relevant context from the database
-        const dbData = await env.DB.prepare([
-          'SELECT id, phone_number, gift_card_name, gift_card_code, payment_method, payment_details, total_amount, status, timestamp',
-          'FROM submissions',
-          'ORDER BY timestamp DESC',
-          'LIMIT 50'
-        ].join(' ')).all();
-
-        const context = JSON.stringify(dbData.results, null, 2);
-
-        // Generate response using LLM
+        // Generate system prompt with schema definition and live data tools instructions
         const systemPrompt = `You are an internal organizational database assistant developed and designed by Kouzu, a developer agency that develops websites, apps, and AI agents for businesses, professionals, and individuals (https://kouzu.in/). You assist team members in looking up and managing gift card submission data.
 
-You have access to the following recent gift card submissions database in JSON format:
-${context}
+You have access to a SQLite database called "submissions" with the following schema:
+- id (INTEGER PRIMARY KEY AUTOINCREMENT)
+- phone_number (TEXT)
+- gift_card_name (TEXT)
+- gift_card_code (TEXT)
+- payment_method (TEXT)
+- payment_details (TEXT)
+- total_amount (TEXT)
+- raw_message (TEXT)
+- timestamp (DATETIME)
+- status (TEXT, default 'unpaid'; values: 'unpaid' | 'paid' | 'bin')
 
-Use this database to answer the user's questions. 
-If the user asks for details (such as gift card code, UPI ID/payment details, phone number, status, etc.) for a specific person or gift card name, look it up in the database.
-If the information is not present or you cannot find it, state that clearly. Keep the response professional, direct, concise, and tailored for internal company operations.
+Tone: Keep the response friendly, natural, helpful, and conversational, like a human support agent assisting their team.
 
-You also have the power to update the status of existing submissions (e.g., mark as paid, delete / put in bin, or restore). 
-If the user requests an action like "mark as paid", "delete", "put in bin", "remove", "restore", or "unpaid" for any submission:
-1. Identify the relevant submission's ID from the database context.
-2. At the end of your response, append an action block. The action block must be a JSON block wrapped in a markdown code block starting with \`\`\`action.
+LIVE DATA RETRIEVAL (MANDATORY):
+You do NOT have any database records pre-loaded in your context.
+To lookup details, search records, or get any data, you MUST generate a SQL query block wrapped in \`\`\`query.
+Example:
+If the user asks: "Find gift card for phone 6200512399"
+You output:
+\`\`\`query
+{"sql": "SELECT * FROM submissions WHERE phone_number = '6200512399'"}
+\`\`\`
+The system will run this query against the live database and feed the results back to you. You can then analyze the results to answer the user's questions or generate updates.
+Avoid destructive SQL queries (e.g. DROP, DELETE, etc.). Only run SELECT queries.
 
-Examples:
-To mark as paid:
+DATABASE WRITING POWERS:
+You can also insert new entries, modify existing ones, or change statuses.
+If the user wants you to add, modify, or update a status:
+1. If you need to find an entry's ID first, use the \`\`\`query tool to search for it.
+2. In your final response, append an action block wrapped in \`\`\`action.
+
+Action JSON schemas:
+
+1. Insert a new submission:
 \`\`\`action
-{"action": "update_status", "id": 12, "status": "paid"}
+{
+  "action": "insert_submission",
+  "phone_number": "6200512399",
+  "gift_card_name": "Plasma wings",
+  "gift_card_code": "PU3HE-TYK6L-J6YTS",
+  "payment_method": "UPI",
+  "payment_details": "melodylofivibes@oksbi",
+  "total_amount": "720",
+  "status": "unpaid"
+}
 \`\`\`
 
-To delete / put in bin:
+2. Modify details of an existing submission (specify the ID and the fields to change; set fields you don't want to touch to null):
 \`\`\`action
-{"action": "update_status", "id": 12, "status": "bin"}
+{
+  "action": "modify_submission",
+  "id": 12,
+  "phone_number": "new_number_or_null",
+  "gift_card_name": "new_name_or_null",
+  "gift_card_code": "new_code_or_null",
+  "payment_method": "new_method_or_null",
+  "payment_details": "new_details_or_null",
+  "total_amount": "new_amount_or_null",
+  "status": "new_status_or_null"
+}
 \`\`\`
 
-To restore / mark as unpaid:
+3. Update status (mark as paid / bin / unpaid) of an existing submission:
 \`\`\`action
-{"action": "update_status", "id": 12, "status": "unpaid"}
+{"action": "update_status", "id": 12, "status": "paid" | "bin" | "unpaid"}
 \`\`\``;
 
         const messages = [
@@ -136,22 +166,52 @@ To restore / mark as unpaid:
         // Append current message
         messages.push({ role: 'user', content: query });
 
-        const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
-          messages
-        });
+        let maxIterations = 3;
+        let responseText = '';
 
-        let replyText = response.response;
+        while (maxIterations > 0) {
+          const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+            messages
+          });
+
+          responseText = response.response;
+
+          // Check if LLM requested a query execution
+          const queryMatch = responseText.match(/```query\s*([\s\S]*?)\s*```/);
+          if (queryMatch) {
+            try {
+              const queryData = JSON.parse(queryMatch[1].trim());
+              if (queryData.sql) {
+                // Execute SQLite query securely
+                const { results } = await env.DB.prepare(queryData.sql).all();
+
+                // Append assistant request and system result back to the model
+                messages.push({ role: 'assistant', content: responseText });
+                messages.push({ role: 'user', content: `Query Results:\n${JSON.stringify(results, null, 2)}` });
+                maxIterations--;
+                continue;
+              }
+            } catch (e) {
+              messages.push({ role: 'assistant', content: responseText });
+              messages.push({ role: 'user', content: `Error executing query: ${e.message}` });
+              maxIterations--;
+              continue;
+            }
+          }
+          break;
+        }
+
+        let replyText = responseText;
         const actionMatch = replyText.match(/```action\s*([\s\S]*?)\s*```/);
-        let actionResult = null;
         if (actionMatch) {
           try {
             const actionData = JSON.parse(actionMatch[1].trim());
+            
             if (actionData.action === 'update_status' && actionData.id && actionData.status) {
               await env.DB.prepare('UPDATE submissions SET status = ? WHERE id = ?')
                 .bind(actionData.status, actionData.id)
                 .run();
               
-              // Remove action block from display reply
               replyText = replyText.replace(/```action[\s\S]*?```/, '').trim();
               if (actionData.status === 'paid') {
                 replyText += "\n\n✅ *Status Update:* Submission has been marked as paid.";
@@ -160,6 +220,46 @@ To restore / mark as unpaid:
               } else if (actionData.status === 'unpaid') {
                 replyText += "\n\n🔄 *Status Update:* Submission has been restored to unpaid.";
               }
+            } else if (actionData.action === 'insert_submission') {
+              await env.DB.prepare(`
+                INSERT INTO submissions (phone_number, gift_card_name, gift_card_code, payment_method, payment_details, total_amount, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `).bind(
+                actionData.phone_number || null,
+                actionData.gift_card_name || null,
+                actionData.gift_card_code || null,
+                actionData.payment_method || null,
+                actionData.payment_details || null,
+                actionData.total_amount || null,
+                actionData.status || 'unpaid'
+              ).run();
+
+              replyText = replyText.replace(/```action[\s\S]*?```/, '').trim();
+              replyText += "\n\n✅ *Database Update:* A new submission has been successfully added to the database.";
+            } else if (actionData.action === 'modify_submission' && actionData.id) {
+              await env.DB.prepare(`
+                UPDATE submissions SET 
+                  phone_number = COALESCE(?, phone_number),
+                  gift_card_name = COALESCE(?, gift_card_name),
+                  gift_card_code = COALESCE(?, gift_card_code),
+                  payment_method = COALESCE(?, payment_method),
+                  payment_details = COALESCE(?, payment_details),
+                  total_amount = COALESCE(?, total_amount),
+                  status = COALESCE(?, status)
+                WHERE id = ?
+              `).bind(
+                actionData.phone_number || null,
+                actionData.gift_card_name || null,
+                actionData.gift_card_code || null,
+                actionData.payment_method || null,
+                actionData.payment_details || null,
+                actionData.total_amount || null,
+                actionData.status || null,
+                actionData.id
+              ).run();
+
+              replyText = replyText.replace(/```action[\s\S]*?```/, '').trim();
+              replyText += `\n\n✅ *Database Update:* Submission ID ${actionData.id} has been modified successfully.`;
             }
           } catch (e) {
             console.error("Failed to parse or execute action:", e);
