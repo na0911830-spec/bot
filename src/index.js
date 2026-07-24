@@ -102,7 +102,7 @@ Use this database to answer the user's questions.
 If the user asks for details (such as gift card code, UPI ID/payment details, phone number, etc.) for a specific person or gift card name, look it up in the database.
 If the information is not present or you cannot find it, state that clearly. Keep the response friendly, concise, and direct.`;
 
-        const response = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+        const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: query }
@@ -138,7 +138,7 @@ JSON Keys to extract:
 - "total_amount": Extract the amount / coins value or total price (e.g. 720 or 10000 coins).`;
 
   try {
-    const response = await ai.run('@cf/meta/llama-3-8b-instruct', {
+    const response = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text }
