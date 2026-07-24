@@ -256,18 +256,18 @@ function getDashboardHTML() {
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-color: #080b11;
-      --card-bg: #111622;
-      --card-hover: #161c2b;
-      --border-color: rgba(255, 255, 255, 0.05);
-      --text-main: #f3f4f6;
-      --text-muted: #8e9aae;
-      --primary: #4f46e5;
-      --primary-hover: #6366f1;
-      --accent-danger: #ef4444;
-      --accent-success: #10b981;
-      --accent-warning: #f59e0b;
-      --transition-speed: 0.2s;
+      --bg-color: #0c0b08;
+      --card-bg: #141310;
+      --card-hover: #1c1a15;
+      --border-color: rgba(212, 175, 55, 0.12);
+      --text-main: #f5f4f0;
+      --text-muted: #a39e93;
+      --gold: #d4af37;
+      --gold-light: #f3e5ab;
+      --gold-glow: rgba(212, 175, 55, 0.08);
+      --accent-danger: #ff5252;
+      --accent-success: #00e676;
+      --transition-speed: 0.25s;
     }
     
     * {
@@ -284,19 +284,19 @@ function getDashboardHTML() {
       display: flex;
       flex-direction: column;
       background-image: 
-        radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.12) 0px, transparent 45%),
-        radial-gradient(at 100% 100%, rgba(239, 68, 68, 0.03) 0px, transparent 45%);
+        radial-gradient(at 50% 0%, rgba(212, 175, 55, 0.07) 0px, transparent 60%),
+        radial-gradient(at 100% 100%, rgba(212, 175, 55, 0.02) 0px, transparent 40%);
       background-attachment: fixed;
     }
 
     header {
-      padding: 1.75rem 2rem;
+      padding: 1.5rem 2rem;
       border-bottom: 1px solid var(--border-color);
       display: flex;
       justify-content: space-between;
       align-items: center;
       backdrop-filter: blur(12px);
-      background-color: rgba(8, 11, 17, 0.7);
+      background-color: rgba(12, 11, 8, 0.7);
       position: sticky;
       top: 0;
       z-index: 10;
@@ -309,10 +309,10 @@ function getDashboardHTML() {
     }
 
     h1 {
-      font-size: 1.35rem;
+      font-size: 1.3rem;
       font-weight: 600;
       letter-spacing: -0.02em;
-      background: linear-gradient(to right, #a5b4fc, #e0e7ff);
+      background: linear-gradient(to right, var(--gold-light), var(--gold));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -325,10 +325,9 @@ function getDashboardHTML() {
       padding: 2.5rem 2rem;
       display: flex;
       flex-direction: column;
-      gap: 1.5rem;
+      gap: 2rem;
     }
 
-    /* Tabs Layout */
     .controls-row {
       display: flex;
       justify-content: space-between;
@@ -339,7 +338,7 @@ function getDashboardHTML() {
 
     .tabs {
       display: flex;
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(212, 175, 55, 0.03);
       padding: 0.25rem;
       border-radius: 10px;
       border: 1px solid var(--border-color);
@@ -364,12 +363,13 @@ function getDashboardHTML() {
 
     .tab-btn.active {
       background: var(--card-bg);
-      color: var(--text-main);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      color: var(--gold);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
     .btn-refresh {
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(212, 175, 55, 0.04);
       color: var(--text-main);
       border: 1px solid var(--border-color);
       padding: 0.6rem 1.2rem;
@@ -385,70 +385,164 @@ function getDashboardHTML() {
     }
 
     .btn-refresh:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.15);
+      background: rgba(212, 175, 55, 0.08);
+      border-color: rgba(212, 175, 55, 0.3);
+      color: var(--gold-light);
     }
 
-    .card {
+    /* Responsive Grid for Card Boxes */
+    .submissions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .submission-card {
       background: var(--card-bg);
       border: 1px solid var(--border-color);
-      border-radius: 16px;
+      border-radius: 14px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      transition: all var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      position: relative;
       overflow: hidden;
-      box-shadow: 0 10px 40px -15px rgba(0, 0, 0, 0.4);
     }
 
-    .table-container {
-      overflow-x: auto;
+    .submission-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      padding: 1px;
+      background: linear-gradient(to bottom right, rgba(212, 175, 55, 0.25), transparent, rgba(212, 175, 55, 0.05));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
+    .submission-card:hover {
+      transform: translateY(-4px);
+      background: var(--card-hover);
+      border-color: rgba(212, 175, 55, 0.3);
+      box-shadow: 0 10px 30px var(--gold-glow), 0 4px 20px rgba(0, 0, 0, 0.5);
     }
 
-    th {
-      background: rgba(255, 255, 255, 0.01);
-      padding: 1.1rem 1.5rem;
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      padding-bottom: 0.75rem;
+    }
+
+    .card-time {
       font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .card-status-badges {
+      display: flex;
+      gap: 0.35rem;
+    }
+
+    .gift-card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .label {
+      font-size: 0.72rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .card-title {
+      font-size: 1.15rem;
       font-weight: 600;
-      border-bottom: 1px solid var(--border-color);
+      color: var(--text-main);
     }
 
-    td {
-      padding: 1.25rem 1.5rem;
-      font-size: 0.92rem;
-      border-bottom: 1px solid var(--border-color);
-      vertical-align: middle;
+    .code-container {
+      margin-top: 0.25rem;
     }
 
-    tr:last-child td {
-      border-bottom: none;
+    .code-container code {
+      font-family: monospace;
+      background: rgba(212, 175, 55, 0.06);
+      border: 1px solid rgba(212, 175, 55, 0.15);
+      color: var(--gold-light);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: inline-block;
+      letter-spacing: 0.05em;
     }
 
-    tr:hover td {
+    .card-details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
       background: rgba(255, 255, 255, 0.01);
+      padding: 0.85rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    .detail-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .detail-item.full-width {
+      grid-column: span 2;
+    }
+
+    .value {
+      font-size: 0.88rem;
+      color: var(--text-main);
+    }
+
+    .payment-details {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .gold-text {
+      color: var(--gold);
+    }
+
+    .font-bold {
+      font-weight: 600;
+    }
+
+    .font-medium {
+      font-weight: 500;
     }
 
     .badge-paid {
-      background: rgba(16, 185, 129, 0.1);
+      background: rgba(0, 230, 118, 0.1);
       color: var(--accent-success);
-      border: 1px solid rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(0, 230, 118, 0.2);
     }
 
     .badge-unpaid {
-      background: rgba(245, 158, 11, 0.1);
-      color: var(--accent-warning);
-      border: 1px solid rgba(245, 158, 11, 0.2);
+      background: rgba(212, 175, 55, 0.1);
+      color: var(--gold);
+      border: 1px solid rgba(212, 175, 55, 0.2);
     }
 
     .badge-dup {
-      background: rgba(239, 68, 68, 0.1);
+      background: rgba(255, 82, 82, 0.1);
       color: var(--accent-danger);
-      border: 1px solid rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(255, 82, 82, 0.2);
     }
 
     .badge {
@@ -456,32 +550,25 @@ function getDashboardHTML() {
       align-items: center;
       padding: 0.25rem 0.6rem;
       border-radius: 6px;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 600;
       gap: 0.25rem;
     }
 
-    .code-text {
-      font-family: monospace;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 0.2rem 0.45rem;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      color: #cbd5e1;
-      border: 1px solid rgba(255, 255, 255, 0.03);
-    }
-
-    .timestamp {
-      color: var(--text-muted);
-      font-size: 0.85rem;
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: auto;
+      border-top: 1px solid rgba(255, 255, 255, 0.03);
+      padding-top: 0.85rem;
     }
 
     .action-btn {
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.02);
       border: 1px solid var(--border-color);
       color: var(--text-main);
-      padding: 0.4rem 0.75rem;
-      border-radius: 6px;
+      padding: 0.5rem 0.85rem;
+      border-radius: 8px;
       cursor: pointer;
       font-family: inherit;
       font-size: 0.8rem;
@@ -490,44 +577,43 @@ function getDashboardHTML() {
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
+      flex: 1;
+      justify-content: center;
     }
 
     .action-btn:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.15);
+      background: rgba(212, 175, 55, 0.08);
+      border-color: rgba(212, 175, 55, 0.3);
     }
 
     .action-btn.pay-btn:hover {
-      background: rgba(16, 185, 129, 0.15);
+      background: rgba(0, 230, 118, 0.12);
       border-color: var(--accent-success);
-      color: #34d399;
+      color: var(--accent-success);
     }
 
     .action-btn.delete-btn:hover {
-      background: rgba(239, 68, 68, 0.15);
+      background: rgba(255, 82, 82, 0.12);
       border-color: var(--accent-danger);
-      color: #f87171;
+      color: var(--accent-danger);
     }
 
     .action-btn.restore-btn:hover {
-      background: rgba(79, 70, 229, 0.15);
-      border-color: var(--primary-hover);
-      color: #a5b4fc;
-    }
-
-    .actions-cell {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
+      background: rgba(212, 175, 55, 0.12);
+      border-color: var(--gold);
+      color: var(--gold);
     }
 
     .empty-state {
+      grid-column: 1 / -1;
       padding: 5rem 2rem;
       text-align: center;
       color: var(--text-muted);
+      border: 1px dashed var(--border-color);
+      border-radius: 12px;
+      background: rgba(212, 175, 55, 0.01);
     }
 
-    /* Footer styling with Kouzu brand */
     footer {
       padding: 2.5rem 2rem;
       border-top: 1px solid var(--border-color);
@@ -535,22 +621,21 @@ function getDashboardHTML() {
       font-size: 0.85rem;
       color: var(--text-muted);
       margin-top: auto;
-      background-color: rgba(8, 11, 17, 0.9);
+      background-color: rgba(12, 11, 8, 0.9);
     }
 
     footer a {
-      color: var(--text-main);
+      color: var(--gold);
       text-decoration: none;
       font-weight: 500;
       transition: color var(--transition-speed) ease;
     }
 
     footer a:hover {
-      color: var(--primary-hover);
+      color: var(--gold-light);
       text-decoration: underline;
     }
 
-    /* Responsiveness */
     @media (max-width: 768px) {
       header {
         padding: 1.25rem 1.5rem;
@@ -576,17 +661,20 @@ function getDashboardHTML() {
       .container {
         padding: 1.5rem 1rem;
       }
+      .submissions-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#gradient)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#goldGradient)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <defs>
-          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#818cf8" />
-            <stop offset="100%" stop-color="#3b82f6" />
+          <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f3e5ab" />
+            <stop offset="100%" stop-color="#d4af37" />
           </linearGradient>
         </defs>
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
@@ -607,28 +695,8 @@ function getDashboardHTML() {
       </div>
     </div>
 
-    <div class="card">
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Phone Number</th>
-              <th>Gift Card</th>
-              <th>Gift Card Code</th>
-              <th>Payment Details</th>
-              <th>Amount</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="data-body">
-            <tr>
-              <td colspan="8" class="empty-state">Loading submissions...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <div id="submissions-grid" class="submissions-grid">
+      <div class="empty-state">Loading submissions...</div>
     </div>
   </div>
 
@@ -641,20 +709,20 @@ function getDashboardHTML() {
     let submissionsData = [];
 
     async function fetchData() {
-      const tbody = document.getElementById('data-body');
+      const grid = document.getElementById('submissions-grid');
       try {
         const res = await fetch('/api/data');
         const json = await res.json();
         
         if (!json.success || !json.data) {
-          tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No submissions found</td></tr>';
+          grid.innerHTML = '<div class="empty-state">No submissions found</div>';
           return;
         }
 
         submissionsData = json.data;
         renderData();
       } catch (err) {
-        tbody.innerHTML = \`<tr><td colspan="8" class="empty-state" style="color:var(--accent-danger)">Error loading data: \${err.message}</td></tr>\`;
+        grid.innerHTML = \`<div class="empty-state" style="color:var(--accent-danger)">Error loading data: \${err.message}</div>\`;
       }
     }
 
@@ -684,7 +752,7 @@ function getDashboardHTML() {
     }
 
     function renderData() {
-      const tbody = document.getElementById('data-body');
+      const grid = document.getElementById('submissions-grid');
       
       // Filter based on tab
       const filtered = submissionsData.filter(row => {
@@ -697,11 +765,11 @@ function getDashboardHTML() {
       });
 
       if (filtered.length === 0) {
-        tbody.innerHTML = \`<tr><td colspan="8" class="empty-state">No submissions in \${currentTab}</td></tr>\`;
+        grid.innerHTML = \`<div class="empty-state">No submissions in \${currentTab}</div>\`;
         return;
       }
 
-      tbody.innerHTML = filtered.map(row => {
+      grid.innerHTML = filtered.map(row => {
         const date = new Date(row.timestamp).toLocaleString();
         const rowStatus = row.status || 'unpaid';
         
@@ -739,19 +807,39 @@ function getDashboardHTML() {
         }
 
         return \`
-          <tr>
-            <td class="timestamp">\${date}</td>
-            <td>\${row.phone_number || '-'}</td>
-            <td><strong>\${row.gift_card_name || '-'}</strong></td>
-            <td><span class="code-text">\${row.gift_card_code || '-'}</span></td>
-            <td>
-              <div style="font-weight:500; font-size:0.9rem">\${row.payment_method || '-'}</div>
-              <div style="font-size:0.8rem; color:var(--text-muted)">\${row.payment_details || '-'}</div>
-            </td>
-            <td><strong>\${row.total_amount || '-'}</strong></td>
-            <td><div style="display:flex; gap:0.25rem; flex-wrap:wrap">\${statusBadges}</div></td>
-            <td><div class="actions-cell">\${actionButtons}</div></td>
-          </tr>
+          <div class="submission-card \${row.is_duplicate ? 'duplicate-card' : ''}">
+            <div class="card-header">
+              <div class="card-time">\${date}</div>
+              <div class="card-status-badges">\${statusBadges}</div>
+            </div>
+            
+            <div class="gift-card-info">
+              <span class="label">Gift Card</span>
+              <h3 class="card-title">\${row.gift_card_name || 'N/A'}</h3>
+              <div class="code-container">
+                <code>\${row.gift_card_code || 'N/A'}</code>
+              </div>
+            </div>
+            
+            <div class="card-details-grid">
+              <div class="detail-item">
+                <span class="label">Phone</span>
+                <span class="value">\${row.phone_number || 'N/A'}</span>
+              </div>
+              <div class="detail-item">
+                <span class="label">Amount</span>
+                <span class="value gold-text font-bold">\${row.total_amount || 'N/A'}</span>
+              </div>
+              <div class="detail-item full-width">
+                <span class="label">Payment</span>
+                <span class="value font-medium">\${row.payment_method || 'N/A'} <span class="payment-details">(\${row.payment_details || 'N/A'})</span></span>
+              </div>
+            </div>
+            
+            <div class="card-actions">
+              \${actionButtons}
+            </div>
+          </div>
         \`;
       }).join('');
     }
