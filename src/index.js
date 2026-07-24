@@ -75,7 +75,7 @@ export default {
 
       // 4. API to query/chat using database data
       if (url.pathname === '/api/query' && request.method === 'POST') {
-        const { query } = await request.json();
+        const { query, history } = await request.json();
         if (!query) {
           return new Response(JSON.stringify({ success: false, error: 'No query provided' }), {
             status: 400,
@@ -84,29 +84,38 @@ export default {
         }
 
         // Fetch some relevant context from the database
-        const dbData = await env.DB.prepare(`
-          SELECT phone_number, gift_card_name, gift_card_code, payment_method, payment_details, total_amount, timestamp
-          FROM submissions
-          ORDER BY timestamp DESC
-          LIMIT 50
-        `).all();
+        const dbData = await env.DB.prepare([
+          'SELECT phone_number, gift_card_name, gift_card_code, payment_method, payment_details, total_amount, timestamp',
+          'FROM submissions',
+          'ORDER BY timestamp DESC',
+          'LIMIT 50'
+        ].join(' ')).all();
 
         const context = JSON.stringify(dbData.results, null, 2);
 
         // Generate response using LLM
-        const systemPrompt = `You are a helpful database assistant for a Telegram Bot.
+        const systemPrompt = `You are an internal organizational database assistant. You assist team members in looking up gift card submission data.
 You have access to the following recent gift card submissions database in JSON format:
 ${context}
 
 Use this database to answer the user's questions. 
 If the user asks for details (such as gift card code, UPI ID/payment details, phone number, etc.) for a specific person or gift card name, look it up in the database.
-If the information is not present or you cannot find it, state that clearly. Keep the response friendly, concise, and direct.`;
+If the information is not present or you cannot find it, state that clearly. Keep the response professional, direct, concise, and tailored for internal company operations.`;
+
+        const messages = [
+          { role: 'system', content: systemPrompt }
+        ];
+
+        // Append conversation history
+        if (history && Array.isArray(history)) {
+          messages.push(...history);
+        }
+
+        // Append current message
+        messages.push({ role: 'user', content: query });
 
         const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: query }
-          ]
+          messages
         });
 
         return new Response(JSON.stringify({ success: true, response: response.response }), {
