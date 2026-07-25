@@ -41,7 +41,7 @@ export default {
         });
       }
 
-      // 3. API to submit and parse card data
+      // 3. API to submit and parse card data (with Duplication Prevention)
       if (url.pathname === '/api/submit' && request.method === 'POST') {
         const { text } = await request.json();
         if (!text) {
@@ -54,6 +54,23 @@ export default {
         // Call LLM to extract fields
         const extraction = await extractDataUsingAI(env.AI, text);
         
+        if (extraction.gift_card_code) {
+          // Check if gift_card_code already exists to prevent duplication
+          const existing = await env.DB.prepare('SELECT id FROM submissions WHERE gift_card_code = ?')
+            .bind(extraction.gift_card_code)
+            .first();
+          if (existing) {
+            return new Response(JSON.stringify({ 
+              success: true, 
+              data: extraction,
+              is_duplicate: true,
+              message: "This card code already exists in the database. Submission ignored."
+            }), {
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
+        }
+
         // Save to D1
         await env.DB.prepare(`
           INSERT INTO submissions (phone_number, gift_card_name, gift_card_code, payment_method, payment_details, total_amount, raw_message, status)
@@ -68,215 +85,61 @@ export default {
           text
         ).run();
 
-        return new Response(JSON.stringify({ success: true, data: extraction }), {
+        return new Response(JSON.stringify({ success: true, data: extraction, is_duplicate: false }), {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });
       }
 
-      // 4. API to query/chat using database data
-      if (url.pathname === '/api/query' && request.method === 'POST') {
-        const { query, history } = await request.json();
-        if (!query) {
-          return new Response(JSON.stringify({ success: false, error: 'No query provided' }), {
+      // 4. API to run arbitrary secure SQL queries (used by Render backend)
+      if (url.pathname === '/api/sql' && request.method === 'POST') {
+        const { sql, params } = await request.json();
+        if (!sql) {
+          return new Response(JSON.stringify({ success: false, error: 'No SQL provided' }), {
             status: 400,
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });
         }
 
-        // Generate system prompt with schema definition and live data tools instructions
-        const systemPrompt = `You are an internal organizational database assistant developed and designed by Kouzu, a developer agency that develops websites, apps, and AI agents for businesses, professionals, and individuals (https://kouzu.in/). You assist team members in looking up and managing gift card submission data.
-
-You have access to a SQLite database called "submissions" with the following schema:
-- id (INTEGER PRIMARY KEY AUTOINCREMENT)
-- phone_number (TEXT)
-- gift_card_name (TEXT)
-- gift_card_code (TEXT)
-- payment_method (TEXT)
-- payment_details (TEXT)
-- total_amount (TEXT)
-- raw_message (TEXT)
-- timestamp (DATETIME)
-- status (TEXT, default 'unpaid'; values: 'unpaid' | 'paid' | 'bin')
-
-Tone: Keep the response friendly, natural, helpful, and conversational, like a human support agent assisting their team.
-
-LIVE DATA RETRIEVAL (MANDATORY):
-You do NOT have any database records pre-loaded in your context.
-To lookup details, search records, or get any data, you MUST generate a SQL query block wrapped in \`\`\`query.
-Example:
-If the user asks: "Find gift card for phone 6200512399"
-You output:
-\`\`\`query
-{"sql": "SELECT * FROM submissions WHERE phone_number = '6200512399'"}
-\`\`\`
-
-COUNTING / STATUSES RULES:
-- IMPORTANT: Before answering any questions about the number of entries, count of items, or what exists in the database, you MUST run a SQL query first (e.g. SELECT COUNT(*) as total FROM submissions, or filtered by status).
-- Submissions in the bin have status = 'bin'.
-- "entries there", "how many entries", "how many items", etc. refers to active (non-bin) entries (status != 'bin') UNLESS the user explicitly asks for the bin or for everything. Always query the database to get the exact counts before stating a number.
-- When asked "how many in bin", run a query like: SELECT COUNT(*) FROM submissions WHERE status = 'bin'.
-- NEVER make up or hallucinate the counts. Always query first!
-
-DATABASE WRITING POWERS:
-You can also insert new entries, modify existing ones, or change statuses.
-If the user wants you to add, modify, or update a status:
-1. If you need to find an entry's ID first, use the \`\`\`query tool to search for it.
-2. In your final response, append an action block wrapped in \`\`\`action.
-
-Action JSON schemas:
-
-1. Insert a new submission:
-\`\`\`action
-{
-  "action": "insert_submission",
-  "phone_number": "6200512399",
-  "gift_card_name": "Plasma wings",
-  "gift_card_code": "PU3HE-TYK6L-J6YTS",
-  "payment_method": "UPI",
-  "payment_details": "melodylofivibes@oksbi",
-  "total_amount": "720",
-  "status": "unpaid"
-}
-\`\`\`
-
-2. Modify details of an existing submission (specify the ID and the fields to change; set fields you don't want to touch to null):
-\`\`\`action
-{
-  "action": "modify_submission",
-  "id": 12,
-  "phone_number": "new_number_or_null",
-  "gift_card_name": "new_name_or_null",
-  "gift_card_code": "new_code_or_null",
-  "payment_method": "new_method_or_null",
-  "payment_details": "new_details_or_null",
-  "total_amount": "new_amount_or_null",
-  "status": "new_status_or_null"
-}
-\`\`\`
-
-3. Update status (mark as paid / bin / unpaid) of an existing submission:
-\`\`\`action
-{"action": "update_status", "id": 12, "status": "paid" | "bin" | "unpaid"}
-\`\`\``;
-
-        const messages = [
-          { role: 'system', content: systemPrompt }
-        ];
-
-        // Append conversation history
-        if (history && Array.isArray(history)) {
-          messages.push(...history);
-        }
-
-        // Append current message
-        messages.push({ role: 'user', content: query });
-
-        let maxIterations = 3;
-        let responseText = '';
-
-        while (maxIterations > 0) {
-          const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fast', {
-            messages
+        try {
+          let query = env.DB.prepare(sql);
+          if (params && Array.isArray(params)) {
+            query = query.bind(...params);
+          }
+          const { results } = await query.all();
+          return new Response(JSON.stringify({ success: true, results }), {
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });
-
-          responseText = response.response;
-
-          // Check if LLM requested a query execution
-          const queryMatch = responseText.match(/```query\s*([\s\S]*?)\s*```/);
-          if (queryMatch) {
-            try {
-              const queryData = JSON.parse(queryMatch[1].trim());
-              if (queryData.sql) {
-                // Execute SQLite query securely
-                const { results } = await env.DB.prepare(queryData.sql).all();
-
-                // Append assistant request and system result back to the model
-                messages.push({ role: 'assistant', content: responseText });
-                messages.push({ role: 'user', content: `Query Results:\n${JSON.stringify(results, null, 2)}` });
-                maxIterations--;
-                continue;
-              }
-            } catch (e) {
-              messages.push({ role: 'assistant', content: responseText });
-              messages.push({ role: 'user', content: `Error executing query: ${e.message}` });
-              maxIterations--;
-              continue;
-            }
-          }
-          break;
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
         }
-
-        let replyText = responseText;
-        const actionMatch = replyText.match(/```action\s*([\s\S]*?)\s*```/);
-        if (actionMatch) {
-          try {
-            const actionData = JSON.parse(actionMatch[1].trim());
-            
-            if (actionData.action === 'update_status' && actionData.id && actionData.status) {
-              await env.DB.prepare('UPDATE submissions SET status = ? WHERE id = ?')
-                .bind(actionData.status, actionData.id)
-                .run();
-              
-              replyText = replyText.replace(/```action[\s\S]*?```/, '').trim();
-              if (actionData.status === 'paid') {
-                replyText += "\n\n✅ *Status Update:* Submission has been marked as paid.";
-              } else if (actionData.status === 'bin') {
-                replyText += "\n\n🗑️ *Status Update:* Submission has been moved to the bin (deleted).";
-              } else if (actionData.status === 'unpaid') {
-                replyText += "\n\n🔄 *Status Update:* Submission has been restored to unpaid.";
-              }
-            } else if (actionData.action === 'insert_submission') {
-              await env.DB.prepare(`
-                INSERT INTO submissions (phone_number, gift_card_name, gift_card_code, payment_method, payment_details, total_amount, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-              `).bind(
-                actionData.phone_number || null,
-                actionData.gift_card_name || null,
-                actionData.gift_card_code || null,
-                actionData.payment_method || null,
-                actionData.payment_details || null,
-                actionData.total_amount || null,
-                actionData.status || 'unpaid'
-              ).run();
-
-              replyText = replyText.replace(/```action[\s\S]*?```/, '').trim();
-              replyText += "\n\n✅ *Database Update:* A new submission has been successfully added to the database.";
-            } else if (actionData.action === 'modify_submission' && actionData.id) {
-              await env.DB.prepare(`
-                UPDATE submissions SET 
-                  phone_number = COALESCE(?, phone_number),
-                  gift_card_name = COALESCE(?, gift_card_name),
-                  gift_card_code = COALESCE(?, gift_card_code),
-                  payment_method = COALESCE(?, payment_method),
-                  payment_details = COALESCE(?, payment_details),
-                  total_amount = COALESCE(?, total_amount),
-                  status = COALESCE(?, status)
-                WHERE id = ?
-              `).bind(
-                actionData.phone_number || null,
-                actionData.gift_card_name || null,
-                actionData.gift_card_code || null,
-                actionData.payment_method || null,
-                actionData.payment_details || null,
-                actionData.total_amount || null,
-                actionData.status || null,
-                actionData.id
-              ).run();
-
-              replyText = replyText.replace(/```action[\s\S]*?```/, '').trim();
-              replyText += `\n\n✅ *Database Update:* Submission ID ${actionData.id} has been modified successfully.`;
-            }
-          } catch (e) {
-            console.error("Failed to parse or execute action:", e);
-          }
-        }
-
-        return new Response(JSON.stringify({ success: true, response: replyText }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        });
       }
 
-      // 5. API to update status of a submission directly
+      // 5. API to run Workers AI model (used by Render backend to host AI model queries)
+      if (url.pathname === '/api/ai' && request.method === 'POST') {
+        const { messages, model } = await request.json();
+        if (!messages) {
+          return new Response(JSON.stringify({ success: false, error: 'No messages provided' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+
+        const selectedModel = model || '@cf/meta/llama-3.1-8b-instruct-fast';
+        try {
+          const aiResponse = await env.AI.run(selectedModel, { messages });
+          return new Response(JSON.stringify({ success: true, response: aiResponse.response }), {
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+      }
+
+      // 6. API to update status of a submission directly
       if (url.pathname === '/api/update-status' && request.method === 'POST') {
         const { id, status } = await request.json();
         if (!id || !status) {
@@ -286,6 +149,21 @@ Action JSON schemas:
           });
         }
         await env.DB.prepare('UPDATE submissions SET status = ? WHERE id = ?').bind(status, id).run();
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+
+      // 7. API to delete a submission permanently (Hard Delete)
+      if (url.pathname === '/api/delete' && request.method === 'POST') {
+        const { id } = await request.json();
+        if (!id) {
+          return new Response(JSON.stringify({ success: false, error: 'Missing id' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+        await env.DB.prepare('DELETE FROM submissions WHERE id = ?').bind(id).run();
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });
@@ -850,6 +728,27 @@ function getDashboardHTML() {
       }
     }
 
+    async function deletePermanently(id) {
+      if (!confirm('Are you sure you want to permanently delete this submission from the database? This action cannot be undone.')) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const json = await res.json();
+        if (json.success) {
+          fetchData();
+        } else {
+          alert('Failed to delete permanently: ' + json.error);
+        }
+      } catch (err) {
+        alert('Error deleting permanently: ' + err.message);
+      }
+    }
+
     async function updateStatus(id, status) {
       try {
         const res = await fetch('/api/update-status', {
@@ -920,13 +819,21 @@ function getDashboardHTML() {
           }
           actionButtons += \`<button class="action-btn delete-btn" onclick="updateStatus(\${row.id}, 'bin')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Delete
+            Move Bin
+          </button>\`;
+          actionButtons += \`<button class="action-btn delete-btn" style="border-color: rgba(255, 82, 82, 0.25); color: var(--accent-danger);" onclick="deletePermanently(\${row.id})">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete Permanently
           </button>\`;
         } else {
           // Bin tab
           actionButtons += \`<button class="action-btn restore-btn" onclick="updateStatus(\${row.id}, 'unpaid')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><polyline points="16 3 21 3 21 8"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><polyline points="8 21 3 21 3 16"/></svg>
             Restore
+          </button>\`;
+          actionButtons += \`<button class="action-btn delete-btn" style="border-color: rgba(255, 82, 82, 0.25); color: var(--accent-danger);" onclick="deletePermanently(\${row.id})">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete Permanently
           </button>\`;
         }
 
