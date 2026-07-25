@@ -308,6 +308,7 @@ If a field is missing, set it to null.
 
 We need to extract the gift card submission details, regardless of how messy or raw the text is.
 - "gift_card_code": Extract the main voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR", "PU3HE-TYK6L-J6YTS", etc.). Look carefully for any code starting with RA-, PU-, or other alphanumeric strings.
+  * CRITICAL: If the message is a question, database command, or update instruction (e.g., "Update submission 4...", "how many in bin", "delete code ..."), do NOT extract any fields. Return null for all keys so that the query/chat handler processes the message instead.
 - "gift_card_name": Extract the name of the gift card (e.g. "League of Legends Gift Card—575 RP", "Plasma wings", etc.).
 - "phone_number": Extract any phone number (e.g. 9923397516, +919999999999, etc.).
 - "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
