@@ -185,10 +185,13 @@ async function extractDataUsingAI(ai, text) {
 If a field is missing, set it to null.
 
 We need to extract the gift card submission details, regardless of how messy or raw the text is.
+- "phone_number": Extract only the 10-digit or local phone number (e.g. "9923397516").
+  * NOTE: A 10-digit sequence of numbers is ALWAYS a phone number. Ensure it is isolated cleanly.
 - "gift_card_code": Extract ONLY the raw voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR"). Do NOT include the card name, amount, or descriptions here. Keep it strictly to the code itself.
   * CRITICAL: If the message is a question, database command, or update instruction (e.g., "Update submission 4...", "how many in bin", "delete code ..."), do NOT extract any fields. Return null for all keys so that the query/chat handler processes the message instead.
 - "gift_card_name": Extract ONLY the short clean name of the gift card brand/type.
-  * CRITICAL: Do NOT include phone numbers (e.g. 9923397516), card codes (e.g. RA-...), payment details, or amounts in this field. It must be strictly the brand/card name itself. For example, if the input is "9923397516 League of Legends", the name is strictly "League of Legends".
+  * CRITICAL: Do NOT include phone numbers (e.g. 9923397516), card codes (e.g. RA-...), payment details, or amounts in this field. It must be strictly the brand/card name itself.
+  * RULE: Any 10-digit number (e.g., "9923397516") is ALWAYS a phone number and must NEVER be part of the "gift_card_name". Strip it out completely! For example, if the input is "9923397516 League of Legends", the name is strictly "League of Legends".
   Here is a list of known card names to help you match:
   * PLAYSTATION (India)
   * ROBLOX
@@ -202,7 +205,6 @@ We need to extract the gift card submission details, regardless of how messy or 
   * Plasma wings
   * Google Play
   * Steam
-- "phone_number": Extract only the 10-digit or local phone number (e.g. "9923397516"). Do NOT include any trailing raw message contents.
 - "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
 - "payment_details": Extract the payment address/ID/mail/number (e.g. "9923397516@ybl" or "melodylofivibes@oksbi").
 - "total_amount": Extract the amount / coins value or total price (e.g. "370/-" or "720").`;
