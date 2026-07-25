@@ -187,7 +187,20 @@ If a field is missing, set it to null.
 We need to extract the gift card submission details, regardless of how messy or raw the text is.
 - "gift_card_code": Extract ONLY the raw voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR"). Do NOT include the card name, amount, or descriptions here. Keep it strictly to the code itself.
   * CRITICAL: If the message is a question, database command, or update instruction (e.g., "Update submission 4...", "how many in bin", "delete code ..."), do NOT extract any fields. Return null for all keys so that the query/chat handler processes the message instead.
-- "gift_card_name": Extract ONLY the short clean name of the gift card (e.g. "League of Legends Gift Card—575 RP", "Plasma wings", "Google Play", etc.). Do NOT include phone numbers, card codes, payment details, or amounts in this field. It must be strictly the brand/card name.
+- "gift_card_name": Extract ONLY the short clean name of the gift card brand/type. Here is a list of known card names to help you match:
+  * PLAYSTATION (India)
+  * ROBLOX
+  * LEAGUE OF LEGENDS (RP)
+  * OVERWATCH 2
+  * MINECRAFT
+  * PVR CARDS
+  * TARGET US
+  * SEA OF THIEVES
+  * AMAZON GLOBAL
+  * Plasma wings
+  * Google Play
+  * Steam
+  Do NOT include phone numbers, card codes, payment details, or amounts in this field. It must be strictly the brand/card name.
 - "phone_number": Extract only the 10-digit or local phone number (e.g. "9923397516"). Do NOT include any trailing raw message contents.
 - "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
 - "payment_details": Extract the payment address/ID/mail/number (e.g. "9923397516@ybl" or "melodylofivibes@oksbi").
@@ -936,4 +949,5 @@ async function ensureTable(db) {
     CREATE INDEX IF NOT EXISTS idx_gift_card_code ON submissions(gift_card_code)
   `).run();
 }
+
 
