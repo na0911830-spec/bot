@@ -109,8 +109,13 @@ You output:
 \`\`\`query
 {"sql": "SELECT * FROM submissions WHERE phone_number = '6200512399'"}
 \`\`\`
-The system will run this query against the live database and feed the results back to you. You can then analyze the results to answer the user's questions or generate updates.
-Avoid destructive SQL queries (e.g. DROP, DELETE, etc.). Only run SELECT queries.
+
+COUNTING / STATUSES RULES:
+- IMPORTANT: Before answering any questions about the number of entries, count of items, or what exists in the database, you MUST run a SQL query first (e.g. SELECT COUNT(*) as total FROM submissions, or filtered by status).
+- Submissions in the bin have status = 'bin'.
+- "entries there", "how many entries", "how many items", etc. refers to active (non-bin) entries (status != 'bin') UNLESS the user explicitly asks for the bin or for everything. Always query the database to get the exact counts before stating a number.
+- When asked "how many in bin", run a query like: SELECT COUNT(*) FROM submissions WHERE status = 'bin'.
+- NEVER make up or hallucinate the counts. Always query first!
 
 DATABASE WRITING POWERS:
 You can also insert new entries, modify existing ones, or change statuses.
@@ -301,13 +306,13 @@ async function extractDataUsingAI(ai, text) {
   const systemPrompt = `You are a data extraction assistant. Extract details from the user's message and return them in a strict JSON format. Do not write any conversational text or markdown code blocks (e.g. do not wrap in \`\`\`json). Just output the raw JSON object.
 If a field is missing, set it to null.
 
-JSON Keys to extract:
-- "phone_number": Extract any phone number (e.g. 6200512399).
-- "gift_card_name": Extract the gift card name (e.g. Plasma wings).
-- "gift_card_code": Extract the alphanumeric code / voucher code.
-- "payment_method": Extract the method (UPI, USDT, Gift Card, etc.).
-- "payment_details": Extract the payment address/ID/mail (e.g. melodylofivibes@oksbi).
-- "total_amount": Extract the amount / coins value or total price (e.g. 720 or 10000 coins).`;
+We need to extract the gift card submission details, regardless of how messy or raw the text is.
+- "gift_card_code": Extract the main voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR", "PU3HE-TYK6L-J6YTS", etc.). Look carefully for any code starting with RA-, PU-, or other alphanumeric strings.
+- "gift_card_name": Extract the name of the gift card (e.g. "League of Legends Gift Card—575 RP", "Plasma wings", etc.).
+- "phone_number": Extract any phone number (e.g. 9923397516, +919999999999, etc.).
+- "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
+- "payment_details": Extract the payment address/ID/mail/number (e.g. 9923397516@ybl or melodylofivibes@oksbi).
+- "total_amount": Extract the amount / coins value or total price (e.g. 370/-, 720, $10, 10000 coins).`;
 
   try {
     const response = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
@@ -333,12 +338,30 @@ function fallbackParse(text) {
     return match ? match[1].trim() : null;
   };
   
+  // Find potential gift card code (e.g. RA-..., PU-..., or alphanumeric-alphanumeric formats)
+  let code = getMatch(/(?:Gift Card Code|गिफ्ट कार्ड कोड)\s*:\s*([^\n]+)/i);
+  if (!code) {
+    const raMatch = text.match(/\b(RA-[A-Z0-9]+)\b/i) || text.match(/\b(PU-[A-Z0-9]+)\b/i);
+    if (raMatch) {
+      code = raMatch[1];
+    }
+  }
+
+  // Find payment details (e.g. UPI VPA format or wallet)
+  let payDetails = getMatch(/(?:Payment Details|पेमेंट की जानकारी)\s*:\s*([^\n]+)/i);
+  if (!payDetails) {
+    const upiMatch = text.match(/\b([a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+)\b/);
+    if (upiMatch) {
+      payDetails = upiMatch[1];
+    }
+  }
+  
   return {
-    phone_number: getMatch(/(?:Phone Number|मोबाइल नंबर)\s*:\s*([^\n]+)/i),
-    gift_card_name: getMatch(/(?:Gift Card Name|गिफ्ट कार्ड का नाम)\s*:\s*([^\n]+)/i),
-    gift_card_code: getMatch(/(?:Gift Card Code|गिफ्ट कार्ड कोड)\s*:\s*([^\n]+)/i),
-    payment_method: getMatch(/(?:Payment Method|पेमेंट का तरीका)\s*:\s*([^\n]+)/i),
-    payment_details: getMatch(/(?:Payment Details|पेमेंट की जानकारी)\s*:\s*([^\n]+)/i),
+    phone_number: getMatch(/(?:Phone Number|मोबाइल नंबर)\s*:\s*([^\n]+)/i) || getMatch(/\b(\d{10})\b/),
+    gift_card_name: getMatch(/(?:Gift Card Name|गिफ्ट कार्ड का नाम)\s*:\s*([^\n]+)/i) || getMatch(/\d+\)\s*([A-Za-z0-9\s—\-]+Gift Card[^\n]*)/i),
+    gift_card_code: code,
+    payment_method: getMatch(/(?:Payment Method|पेमेंट का तरीका)\s*:\s*([^\n]+)/i) || "UPI",
+    payment_details: payDetails,
     total_amount: getMatch(/(?:Total Amount|कुल राशि)\s*:\s*([^\n]+)/i)
   };
 }
