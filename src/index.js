@@ -187,7 +187,7 @@ If a field is missing, set it to null.
 We need to extract the gift card submission details, regardless of how messy or raw the text is.
 - "gift_card_code": Extract ONLY the raw voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR"). Do NOT include the card name, amount, or descriptions here. Keep it strictly to the code itself.
   * CRITICAL: If the message is a question, database command, or update instruction (e.g., "Update submission 4...", "how many in bin", "delete code ..."), do NOT extract any fields. Return null for all keys so that the query/chat handler processes the message instead.
-- "gift_card_name": Extract the name of the gift card (e.g. "League of Legends Gift Card—575 RP", "Plasma wings", etc.).
+- "gift_card_name": Extract ONLY the short clean name of the gift card (e.g. "League of Legends Gift Card—575 RP", "Plasma wings", "Google Play", etc.). Do NOT include phone numbers, card codes, payment details, or amounts in this field. It must be strictly the brand/card name.
 - "phone_number": Extract only the 10-digit or local phone number (e.g. "9923397516"). Do NOT include any trailing raw message contents.
 - "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
 - "payment_details": Extract the payment address/ID/mail/number (e.g. "9923397516@ybl" or "melodylofivibes@oksbi").
@@ -247,9 +247,10 @@ function fallbackParse(text) {
   // Gift card name extraction
   let name = getMatch(/(?:Gift Card Name|गिफ्ट कार्ड का नाम)\s*:\s*([^\n]+)/i);
   if (!name) {
-    const nameMatch = text.match(/\d+\)\s*([A-Za-z0-9\s—\-]+Gift Card[^\n]*)/i) || text.match(/([A-Za-z0-9\s—\-]+Gift Card[^\n]*)/i);
+    // Exclude phone numbers, codes, or upi details from name match
+    const nameMatch = text.match(/\d+\)\s*([A-Za-z0-9\s—\-]+Gift Card[^\n.]*)/i) || text.match(/([A-Za-z0-9\s—\-]+Gift Card[^\n.]*)/i);
     if (nameMatch) {
-      name = nameMatch[1].trim();
+      name = nameMatch[1].replace(/(?:Phone Number|RA-|PU-|Payment Method|Total Amount|@)[^\n]*/i, '').trim();
     }
   }
 
