@@ -43,7 +43,7 @@ export default {
 
       // 3. API to submit and parse card data (with Duplication Prevention)
       if (url.pathname === '/api/submit' && request.method === 'POST') {
-        const { text } = await request.json();
+        const { text, systemPrompt } = await request.json();
         if (!text) {
           return new Response(JSON.stringify({ success: false, error: 'No text provided' }), {
             status: 400,
@@ -52,7 +52,7 @@ export default {
         }
 
         // Call LLM to extract fields
-        const extraction = await extractDataUsingAI(env.AI, text);
+        const extraction = await extractDataUsingAI(env.AI, text, systemPrompt);
         
         if (extraction.gift_card_code) {
           // Check if gift_card_code already exists to prevent duplication
@@ -180,34 +180,9 @@ export default {
 };
 
 // Helper function to extract info via Workers AI
-async function extractDataUsingAI(ai, text) {
-  const systemPrompt = `You are a data extraction assistant. Extract details from the user's message and return them in a strict JSON format. Do not write any conversational text or markdown code blocks (e.g. do not wrap in \`\`\`json). Just output the raw JSON object.
-If a field is missing, set it to null.
-
-We need to extract the gift card submission details, regardless of how messy or raw the text is.
-- "phone_number": Extract only the 10-digit or local phone number (e.g. "9923397516").
-  * NOTE: A 10-digit sequence of numbers is ALWAYS a phone number. Ensure it is isolated cleanly.
-- "gift_card_code": Extract ONLY the raw voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR"). Do NOT include the card name, amount, or descriptions here. Keep it strictly to the code itself.
-  * CRITICAL: If the message is a question, database command, or update instruction (e.g., "Update submission 4...", "how many in bin", "delete code ..."), do NOT extract any fields. Return null for all keys so that the query/chat handler processes the message instead.
-- "gift_card_name": Extract ONLY the short clean name of the gift card brand/type.
-  * CRITICAL: Do NOT include phone numbers (e.g. 9923397516), card codes (e.g. RA-...), payment details, or amounts in this field. It must be strictly the brand/card name itself.
-  * RULE: Any 10-digit number (e.g., "9923397516") is ALWAYS a phone number and must NEVER be part of the "gift_card_name". Strip it out completely! For example, if the input is "9923397516 League of Legends", the name is strictly "League of Legends".
-  Here is a list of known card names to help you match:
-  * PLAYSTATION (India)
-  * ROBLOX
-  * LEAGUE OF LEGENDS (RP)
-  * OVERWATCH 2
-  * MINECRAFT
-  * PVR CARDS
-  * TARGET US
-  * SEA OF THIEVES
-  * AMAZON GLOBAL
-  * Plasma wings
-  * Google Play
-  * Steam
-- "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
-- "payment_details": Extract the payment address/ID/mail/number (e.g. "9923397516@ybl" or "melodylofivibes@oksbi").
-- "total_amount": Extract the amount / coins value or total price (e.g. "370/-" or "720").`;
+async function extractDataUsingAI(ai, text, customSystemPrompt) {
+  const defaultPrompt = `You are a data extraction assistant. Extract details from the user's message and return them in a strict JSON format. Do not write any conversational text or markdown code blocks. Just output the raw JSON object.`;
+  const systemPrompt = customSystemPrompt || defaultPrompt;
 
   try {
     const response = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
