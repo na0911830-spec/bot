@@ -185,13 +185,13 @@ async function extractDataUsingAI(ai, text) {
 If a field is missing, set it to null.
 
 We need to extract the gift card submission details, regardless of how messy or raw the text is.
-- "gift_card_code": Extract the main voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR", "PU3HE-TYK6L-J6YTS", etc.). Look carefully for any code starting with RA-, PU-, or other alphanumeric strings.
+- "gift_card_code": Extract ONLY the raw voucher/alphanumeric code or ID (e.g. "RA-R8L4EGUL6PSK6UHR"). Do NOT include the card name, amount, or descriptions here. Keep it strictly to the code itself.
   * CRITICAL: If the message is a question, database command, or update instruction (e.g., "Update submission 4...", "how many in bin", "delete code ..."), do NOT extract any fields. Return null for all keys so that the query/chat handler processes the message instead.
 - "gift_card_name": Extract the name of the gift card (e.g. "League of Legends Gift Card—575 RP", "Plasma wings", etc.).
-- "phone_number": Extract any phone number (e.g. 9923397516, +919999999999, etc.).
+- "phone_number": Extract only the 10-digit or local phone number (e.g. "9923397516"). Do NOT include any trailing raw message contents.
 - "payment_method": Extract the method (UPI, USDT, Paytm, GPAY, Gift Card, etc.).
-- "payment_details": Extract the payment address/ID/mail/number (e.g. 9923397516@ybl or melodylofivibes@oksbi).
-- "total_amount": Extract the amount / coins value or total price (e.g. 370/-, 720, $10, 10000 coins).`;
+- "payment_details": Extract the payment address/ID/mail/number (e.g. "9923397516@ybl" or "melodylofivibes@oksbi").
+- "total_amount": Extract the amount / coins value or total price (e.g. "370/-" or "720").`;
 
   try {
     const response = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
@@ -218,7 +218,7 @@ function fallbackParse(text) {
   };
   
   // Find potential gift card code (e.g. RA-..., PU-..., or alphanumeric-alphanumeric formats)
-  let code = getMatch(/(?:Gift Card Code|गिफ्ट कार्ड कोड)\s*:\s*([^\n]+)/i);
+  let code = getMatch(/(?:Gift Card Code|गिफ्ट कार्ड कोड)\s*:\s*([^\n\s]+)/i);
   if (!code) {
     const raMatch = text.match(/\b(RA-[A-Z0-9]+)\b/i) || text.match(/\b(PU-[A-Z0-9]+)\b/i);
     if (raMatch) {
@@ -227,7 +227,7 @@ function fallbackParse(text) {
   }
 
   // Find payment details (e.g. UPI VPA format or wallet)
-  let payDetails = getMatch(/(?:Payment Details|पेमेंट की जानकारी)\s*:\s*([^\n]+)/i);
+  let payDetails = getMatch(/(?:Payment Details|पेमेंट की जानकारी)\s*:\s*([^\n\s]+)/i);
   if (!payDetails) {
     const upiMatch = text.match(/\b([a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+)\b/);
     if (upiMatch) {
@@ -235,13 +235,40 @@ function fallbackParse(text) {
     }
   }
   
+  // Phone number extraction: look for local 10 digit number cleanly
+  let phone = getMatch(/(?:Phone Number|मोबाइल नंबर)\s*:\s*([0-9]+)/i);
+  if (!phone) {
+    const rawPhoneMatch = text.match(/\b(\d{10})\b/);
+    if (rawPhoneMatch) {
+      phone = rawPhoneMatch[1];
+    }
+  }
+  
+  // Gift card name extraction
+  let name = getMatch(/(?:Gift Card Name|गिफ्ट कार्ड का नाम)\s*:\s*([^\n]+)/i);
+  if (!name) {
+    const nameMatch = text.match(/\d+\)\s*([A-Za-z0-9\s—\-]+Gift Card[^\n]*)/i) || text.match(/([A-Za-z0-9\s—\-]+Gift Card[^\n]*)/i);
+    if (nameMatch) {
+      name = nameMatch[1].trim();
+    }
+  }
+
+  // Total amount extraction
+  let amount = getMatch(/(?:Total Amount|कुल राशि)\s*:\s*([0-9/.\-]+)/i);
+  if (!amount) {
+    const amountMatch = text.match(/(?:Total Amount|Amount|Price)\s*:\s*([0-9/.\-]+)/i) || text.match(/\b(\d+[\/\-]*)\b/);
+    if (amountMatch) {
+      amount = amountMatch[1];
+    }
+  }
+  
   return {
-    phone_number: getMatch(/(?:Phone Number|मोबाइल नंबर)\s*:\s*([^\n]+)/i) || getMatch(/\b(\d{10})\b/),
-    gift_card_name: getMatch(/(?:Gift Card Name|गिफ्ट कार्ड का नाम)\s*:\s*([^\n]+)/i) || getMatch(/\d+\)\s*([A-Za-z0-9\s—\-]+Gift Card[^\n]*)/i),
+    phone_number: phone,
+    gift_card_name: name,
     gift_card_code: code,
-    payment_method: getMatch(/(?:Payment Method|पेमेंट का तरीका)\s*:\s*([^\n]+)/i) || "UPI",
+    payment_method: getMatch(/(?:Payment Method|पेमेंट का तरीका)\s*:\s*([A-Za-z]+)/i) || "UPI",
     payment_details: payDetails,
-    total_amount: getMatch(/(?:Total Amount|कुल राशि)\s*:\s*([^\n]+)/i)
+    total_amount: amount
   };
 }
 
